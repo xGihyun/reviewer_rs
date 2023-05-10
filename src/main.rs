@@ -44,8 +44,9 @@ struct Message {
 async fn main() -> Result<(), ReqwestError> {
 
     dotenv().ok();
+
+    env::set_var("RUST_BACKTRACE", "1");
     
-    let client = reqwest::Client::new();
     let rapid_api_key = env::var("RAPID_API_KEY").expect("Missing Rapid API key");
 
     let current_dir = std::env::current_dir().unwrap();
@@ -63,7 +64,7 @@ async fn main() -> Result<(), ReqwestError> {
         file_names.push(file_name);
     }
 
-    println!("SELECT A FILE TO SUMMARIZE:\n");
+    println!("SELECT A FILE:\n");
     
     let selected_file = Select::new()
         .items(&file_names)
@@ -83,25 +84,47 @@ async fn main() -> Result<(), ReqwestError> {
     let regex = Regex::new(r"[^a-zA-Z0-9[:punct:] ]").unwrap();
     let clean_text = regex.replace_all(&text, "");
 
-    println!("ORIGINAL TEXT:\n");
-    println!("{}", clean_text.trim());
+    // Use GPT 3.5 to summarize
+    let summary_preamble = "Summarize the following: ".to_string();
+
+    let ai_summary = chatgpt(clean_text.to_string(), summary_preamble, &rapid_api_key).await?;
+    let ai_summary_text = &ai_summary.choices[0].message.content;
+
+    println!("\n");
+    println!("SUMMARY:\n");
+    println!("{}", ai_summary_text);
     println!();
 
-    // Use GPT 3.5 to summarize
-    let mut sp = Spinner::new(Spinners::Dots12, "\t Sumarizing...".into());
+    // Use GPT 3.5 to generate a quiz based on the summarized topic
+    let quiz_preamble = "Make a 10 item quiz based on the following: ".to_string();
+
+    let ai_quiz = chatgpt(clean_text.to_string(), quiz_preamble, &rapid_api_key).await?;
+    let ai_quiz_text = &ai_quiz.choices[0].message.content;
+
+    println!("\n");
+    println!("QUIZ:\n");
+    println!("{}", ai_quiz_text);
+    println!();
+
+    Ok(())
+}
+
+async fn chatgpt(text: String, preamble: String, api_key: &String) -> Result<ChatCompletion, ReqwestError> {
+
+    let client = reqwest::Client::new();
+
+    let mut sp = Spinner::new(Spinners::Dots12, "\t OpenAI is generating...".into());
 
     let mut open_ai_headers = reqwest::header::HeaderMap::new();
-    open_ai_headers.insert("X-RapidAPI-Key", rapid_api_key.parse().unwrap());
+    open_ai_headers.insert("X-RapidAPI-Key", api_key.parse().unwrap());
     open_ai_headers.insert("X-RapidAPI-Host", "openai80.p.rapidapi.com".parse().unwrap());
-
-    let summary_preamble = "Summarize the following: ";
 
     let open_ai_req_opts = json!({
         "model": "gpt-3.5-turbo",
         "messages": [
             {
                 "role": "system",
-                "content": summary_preamble
+                "content": preamble
             },
             {
                 "role": "user",
@@ -110,7 +133,7 @@ async fn main() -> Result<(), ReqwestError> {
         ]
     });
 
-    let open_ai_res = client
+    let open_ai_summary_res = client
         .post("https://openai80.p.rapidapi.com/chat/completions")
         .headers(open_ai_headers)
         .json(&open_ai_req_opts)
@@ -119,16 +142,9 @@ async fn main() -> Result<(), ReqwestError> {
         .text()
         .await?;
 
-    let chat_completion: ChatCompletion = serde_json::from_str(&open_ai_res).unwrap();
+    let chat_completion: ChatCompletion = serde_json::from_str(&open_ai_summary_res).unwrap();
 
     sp.stop();
 
-    let ai_response = &chat_completion.choices[0].message.content;
-
-    println!("\n");
-    println!("SUMMARY:\n");
-    println!("{}", ai_response);
-    println!();
-
-    Ok(())
+    Ok(chat_completion)
 }
