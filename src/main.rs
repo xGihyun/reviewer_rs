@@ -45,7 +45,7 @@ async fn main() -> Result<(), ReqwestError> {
 
     dotenv().ok();
 
-    env::set_var("RUST_BACKTRACE", "1");
+    env::set_var("RUST_BACKTRACE", "full");
     
     let rapid_api_key = env::var("RAPID_API_KEY").expect("Missing Rapid API key");
 
@@ -87,7 +87,7 @@ async fn main() -> Result<(), ReqwestError> {
     // Use GPT 3.5 to summarize
     let summary_preamble = "Summarize the following: ".to_string();
 
-    let ai_summary = chatgpt(clean_text.to_string(), summary_preamble, &rapid_api_key).await?;
+    let ai_summary = chatgpt(&clean_text.to_string(), &summary_preamble, &rapid_api_key).await?;
     let ai_summary_text = &ai_summary.choices[0].message.content;
 
     println!("\n");
@@ -98,7 +98,7 @@ async fn main() -> Result<(), ReqwestError> {
     // Use GPT 3.5 to generate a quiz based on the summarized topic
     let quiz_preamble = "Make a 10 item quiz based on the following: ".to_string();
 
-    let ai_quiz = chatgpt(clean_text.to_string(), quiz_preamble, &rapid_api_key).await?;
+    let ai_quiz = chatgpt(&ai_summary_text.to_string(), &quiz_preamble, &rapid_api_key).await?;
     let ai_quiz_text = &ai_quiz.choices[0].message.content;
 
     println!("\n");
@@ -109,7 +109,7 @@ async fn main() -> Result<(), ReqwestError> {
     Ok(())
 }
 
-async fn chatgpt(text: String, preamble: String, api_key: &String) -> Result<ChatCompletion, ReqwestError> {
+async fn chatgpt(text: &String, preamble: &String, api_key: &String) -> Result<ChatCompletion, ReqwestError> {
 
     let client = reqwest::Client::new();
 
